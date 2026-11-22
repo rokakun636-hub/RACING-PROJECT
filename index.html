@@ -32,7 +32,10 @@
 <div id="hud">
  <div class="top">
   <div class="pill">RACING PROJECT<br><span id="score">SKOR 0</span></div>
-  <div class="pill" style="text-align:right"><span id="speed">0</span> KM/J<br><span id="coins">KOIN 0</span></div>
+  <div style="display:flex;gap:7px;align-items:flex-start">
+   <button id="soundToggle" class="pill" style="color:var(--cyan);border:1px solid #28435d;font-size:16px;pointer-events:auto">🔊 SUARA</button>
+   <div class="pill" style="text-align:right"><span id="speed">0</span> KM/J<br><span id="coins">KOIN 0</span></div>
+  </div>
  </div>
  <div id="toast">TABRAKAN!</div>
  <div class="controls">
@@ -51,7 +54,7 @@
   <div class="logo">RACING<br>PROJECT</div>
   <p class="sub">STREET RACING • LIGHT 3D<br>Hindari kendaraan, kumpulkan koin, dan pecahkan skor terbaikmu!</p>
   <button class="mainbtn" id="start">MULAI BALAP</button>
-  <p class="small">Kontrol: ◀ ▶ untuk belok • GAS untuk mempercepat • REM untuk memperlambat</p>
+  <p class="small">Kontrol: ◀ ▶ belok • GAS mempercepat • REM memperlambat • Suara dapat diatur saat bermain</p>
  </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
@@ -86,23 +89,70 @@ function spawnTraffic(){let lanes=[-4,0,4],x=lanes[Math.floor(Math.random()*3)];
 function spawnCoin(){let c=new THREE.Mesh(new THREE.TorusGeometry(.48,.13,7,14),new THREE.MeshStandardMaterial({color:0xffd43b,metalness:.6,roughness:.3}));c.position.set([-4,0,4][Math.floor(Math.random()*3)],1.1,-100-Math.random()*35);scene.add(c);coinMeshes.push(c)}
 let running=false,speed=0,score=0,coins=0,last=0,spawn=0,coinSpawn=0,hitCooldown=0;
 const keys={left:false,right:false,gas:false,brake:false};
+
+// Audio sintetis bawaan: tidak membutuhkan file suara eksternal.
+let audioCtx=null, masterGain=null, engineOsc=null, engineGain=null, musicTimer=null;
+let soundEnabled=true, musicStep=0;
+function initAudio(){
+ if(audioCtx){if(audioCtx.state==='suspended')audioCtx.resume();return}
+ const AC=window.AudioContext||window.webkitAudioContext;
+ if(!AC)return;
+ audioCtx=new AC();masterGain=audioCtx.createGain();masterGain.gain.value=.55;masterGain.connect(audioCtx.destination);
+ engineOsc=audioCtx.createOscillator();engineOsc.type='sawtooth';
+ engineGain=audioCtx.createGain();engineGain.gain.value=0;
+ const filter=audioCtx.createBiquadFilter();filter.type='lowpass';filter.frequency.value=520;
+ engineOsc.connect(filter);filter.connect(engineGain);engineGain.connect(masterGain);engineOsc.start();
+}
+function tone(freq,duration,type='sine',volume=.18,slide=0){
+ if(!audioCtx||!soundEnabled)return;
+ const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+ o.type=type;o.frequency.setValueAtTime(freq,audioCtx.currentTime);
+ if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide),audioCtx.currentTime+duration);
+ g.gain.setValueAtTime(volume,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+duration);
+ o.connect(g);g.connect(masterGain);o.start();o.stop(audioCtx.currentTime+duration);
+}
+function sfxCoin(){tone(880,.09,'sine',.2,260);setTimeout(()=>tone(1320,.13,'sine',.15,180),65)}
+function sfxCrash(){tone(115,.32,'sawtooth',.28,-75);tone(65,.4,'triangle',.25,-25)}
+function sfxBrake(){tone(420,.12,'triangle',.08,-220)}
+function updateAudio(){
+ if(!audioCtx||!engineOsc)return;
+ const now=audioCtx.currentTime;
+ const active=running&&soundEnabled;
+ engineGain.gain.setTargetAtTime(active?(keys.gas ? .095 : .035):0,now,.08);
+ engineOsc.frequency.setTargetAtTime(55+speed*5.2+(keys.gas?28:0),now,.07);
+ if(masterGain)masterGain.gain.setTargetAtTime(soundEnabled ? .55 : 0,now,.05);
+}
+function startMusic(){
+ if(!audioCtx||musicTimer||!soundEnabled)return;
+ const notes=[196,246.94,293.66,246.94,220,261.63,329.63,261.63];
+ musicTimer=setInterval(()=>{if(running&&soundEnabled){tone(notes[musicStep%notes.length],.22,'triangle',.035);musicStep++}},340);
+}
+function stopMusic(){if(musicTimer){clearInterval(musicTimer);musicTimer=null}}
+document.querySelector('#soundToggle').addEventListener('click',()=>{
+ soundEnabled=!soundEnabled;
+ document.querySelector('#soundToggle').textContent=soundEnabled?'🔊 SUARA':'🔇 SENYAP';
+ if(soundEnabled){initAudio();startMusic()}else{stopMusic()}
+ updateAudio();
+});
+
 document.querySelectorAll('[data-key]').forEach(b=>{let k=b.dataset.key;const on=e=>{e.preventDefault();keys[k]=true;b.classList.add('down')},off=e=>{e.preventDefault();keys[k]=false;b.classList.remove('down')};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('pointerleave',off)});
 addEventListener('keydown',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true});
 addEventListener('keyup',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false});
-function endGame(){running=false;hud.style.display='none';overlay.style.display='flex';overlay.querySelector('.logo').innerHTML='BALAPAN<br>SELESAI';overlay.querySelector('.sub').innerHTML=`Skor: <b>${Math.floor(score)}</b><br>Koin terkumpul: <b>${coins}</b>`;document.querySelector('#start').textContent='BALAP LAGI';}
-function start(){traffic.forEach(o=>scene.remove(o));coinMeshes.forEach(o=>scene.remove(o));traffic.length=0;coinMeshes.length=0;player.position.x=0;speed=0;score=0;coins=0;spawn=0;coinSpawn=0;running=true;overlay.style.display='none';hud.style.display='block';last=performance.now()}
+function endGame(){running=false;stopMusic();updateAudio();hud.style.display='none';overlay.style.display='flex';overlay.querySelector('.logo').innerHTML='BALAPAN<br>SELESAI';overlay.querySelector('.sub').innerHTML=`Skor: <b>${Math.floor(score)}</b><br>Koin terkumpul: <b>${coins}</b>`;document.querySelector('#start').textContent='BALAP LAGI';}
+function start(){initAudio();if(soundEnabled)startMusic();traffic.forEach(o=>scene.remove(o));coinMeshes.forEach(o=>scene.remove(o));traffic.length=0;coinMeshes.length=0;player.position.x=0;speed=0;score=0;coins=0;spawn=0;coinSpawn=0;running=true;overlay.style.display='none';hud.style.display='block';last=performance.now()}
 document.querySelector('#start').addEventListener('click',start);
 function animate(t){requestAnimationFrame(animate);let dt=Math.min((t-last)/1000||0,.04);last=t;
  if(running){
+  updateAudio();
   let target=keys.gas?34:18;if(keys.brake)target=7;speed+=(target-speed)*dt*1.7;
   if(keys.left)player.position.x-=7*dt;if(keys.right)player.position.x+=7*dt;player.position.x=Math.max(-4.65,Math.min(4.65,player.position.x));
   const move=(speed/3.6)*dt*2.4;
   laneMarks.concat(curb).forEach(o=>{o.position.z+=move;if(o.position.z>12)o.position.z-=162});
   traffic.forEach((o,i)=>{o.position.z+=move*(.78+speed/55);if(o.position.z>13){scene.remove(o);traffic.splice(i,1);score+=10}});
-  coinMeshes.forEach((o,i)=>{o.position.z+=move;o.rotation.y+=dt*3;if(Math.abs(o.position.z-player.position.z)<1.6&&Math.abs(o.position.x-player.position.x)<1.5){scene.remove(o);coinMeshes.splice(i,1);coins++;score+=50}});
+  coinMeshes.forEach((o,i)=>{o.position.z+=move;o.rotation.y+=dt*3;if(Math.abs(o.position.z-player.position.z)<1.6&&Math.abs(o.position.x-player.position.x)<1.5){scene.remove(o);coinMeshes.splice(i,1);coins++;score+=50;sfxCoin()}});
   spawn+=dt;coinSpawn+=dt;if(spawn>1.8&&traffic.length<5){spawnTraffic();spawn=0}if(coinSpawn>3.2&&coinMeshes.length<3){spawnCoin();coinSpawn=0}
   hitCooldown=Math.max(0,hitCooldown-dt);
-  for(const o of traffic){if(Math.abs(o.position.z-player.position.z)<2.35&&Math.abs(o.position.x-player.position.x)<1.45&&hitCooldown===0){speed*=.35;hitCooldown=1.1;document.querySelector('#toast').style.display='block';setTimeout(()=>document.querySelector('#toast').style.display='none',550);if(speed<5){endGame();break}}}
+  for(const o of traffic){if(Math.abs(o.position.z-player.position.z)<2.35&&Math.abs(o.position.x-player.position.x)<1.45&&hitCooldown===0){speed*=.35;hitCooldown=1.1;sfxCrash();document.querySelector('#toast').style.display='block';setTimeout(()=>document.querySelector('#toast').style.display='none',550);if(speed<5){endGame();break}}}
   score+=dt*speed*.7;document.querySelector('#speed').textContent=Math.round(speed*3);document.querySelector('#score').textContent='SKOR '+Math.floor(score);document.querySelector('#coins').textContent='KOIN '+coins;
  }
  renderer.render(scene,camera);
