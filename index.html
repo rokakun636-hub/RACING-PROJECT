@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#090f1b">
+<title>RACING PROJECT</title>
+<style>
+:root{--cyan:#42e8ff;--panel:rgba(7,15,29,.82);--white:#f4fbff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080e18;color:var(--white);font-family:Arial,sans-serif;touch-action:none}
+#game{position:fixed;inset:0}canvas{display:block}
+#hud{position:fixed;inset:0;pointer-events:none;display:none}
+.top{position:absolute;top:env(safe-area-inset-top,10px);left:12px;right:12px;display:flex;justify-content:space-between;gap:8px}
+.pill{background:var(--panel);border:1px solid #28435d;border-radius:12px;padding:9px 12px;backdrop-filter:blur(8px);font-weight:bold}
+#speed{font-size:24px;color:var(--cyan)}#score{font-size:17px}
+.controls{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));left:14px;right:14px;display:flex;justify-content:space-between;align-items:end}
+.cluster{display:flex;gap:10px;align-items:center}
+.ctrl{pointer-events:auto;border:1px solid #75dff2;background:rgba(8,25,42,.78);color:white;border-radius:18px;width:66px;height:66px;font-size:25px;font-weight:bold;box-shadow:0 5px 18px #0008;touch-action:none}
+.ctrl:active,.ctrl.down{background:#087e9d;transform:scale(.96)}
+.pedals{display:flex;gap:9px}.pedals .ctrl{width:62px;height:76px;font-size:14px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,#07101deF,#0b1b2de8);z-index:5}
+.card{width:min(440px,100%);padding:26px 22px;border:1px solid #31516b;border-radius:24px;background:linear-gradient(145deg,#12263b,#091321);box-shadow:0 20px 70px #0009;text-align:center}
+.logo{font-size:clamp(30px,9vw,48px);font-weight:1000;letter-spacing:2px;color:var(--cyan);text-shadow:0 0 22px #19cce966}
+.sub{color:#b8c9d8;line-height:1.5}.mainbtn{border:0;border-radius:14px;background:linear-gradient(90deg,#00a9d2,#38e0ec);color:#04111a;font-size:18px;font-weight:900;padding:15px 24px;width:100%;margin-top:14px}
+.small{font-size:12px;color:#91a8ba;margin-top:14px}
+#toast{position:absolute;top:70px;left:50%;transform:translateX(-50%);background:#9b2534;padding:9px 16px;border-radius:10px;display:none}
+@media(max-height:500px){.ctrl{width:56px;height:56px}.pedals .ctrl{height:62px}.card{padding:16px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+ <div class="top">
+  <div class="pill">RACING PROJECT<br><span id="score">SKOR 0</span></div>
+  <div class="pill" style="text-align:right"><span id="speed">0</span> KM/J<br><span id="coins">KOIN 0</span></div>
+ </div>
+ <div id="toast">TABRAKAN!</div>
+ <div class="controls">
+  <div class="cluster">
+   <button class="ctrl" data-key="left" aria-label="Kiri">◀</button>
+   <button class="ctrl" data-key="right" aria-label="Kanan">▶</button>
+  </div>
+  <div class="pedals">
+   <button class="ctrl" data-key="brake">REM</button>
+   <button class="ctrl" data-key="gas">GAS</button>
+  </div>
+ </div>
+</div>
+<div id="overlay">
+ <div class="card">
+  <div class="logo">RACING<br>PROJECT</div>
+  <p class="sub">STREET RACING • LIGHT 3D<br>Hindari kendaraan, kumpulkan koin, dan pecahkan skor terbaikmu!</p>
+  <button class="mainbtn" id="start">MULAI BALAP</button>
+  <p class="small">Kontrol: ◀ ▶ untuk belok • GAS untuk mempercepat • REM untuk memperlambat</p>
+ </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(()=>{
+const game=document.querySelector('#game'), overlay=document.querySelector('#overlay'), hud=document.querySelector('#hud');
+if(!window.THREE){overlay.querySelector('.sub').textContent='Koneksi internet diperlukan untuk memuat grafis 3D. Muat ulang halaman saat online.';document.querySelector('#start').disabled=true;return;}
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x87b9d5);scene.fog=new THREE.Fog(0x87b9d5,35,125);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,180);camera.position.set(0,5.6,10.5);camera.lookAt(0,1,-8);
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=false;renderer.outputColorSpace=THREE.SRGBColorSpace;game.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x43566a,2));
+const sun=new THREE.DirectionalLight(0xffffff,1.5);sun.position.set(-5,12,8);scene.add(sun);
+const mat=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.8});
+const roadMat=mat(0x303943), lineMat=mat(0xf4f0d6), grassMat=mat(0x39794d);
+const road=new THREE.Mesh(new THREE.PlaneGeometry(12,180),roadMat);road.rotation.x=-Math.PI/2;road.position.z=-55;scene.add(road);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(180,220),grassMat);ground.rotation.x=-Math.PI/2;ground.position.set(0,-.08,-65);scene.add(ground);
+const laneMarks=[];
+for(let z=-145;z<20;z+=9){for(let x of [-2,2]){let m=new THREE.Mesh(new THREE.BoxGeometry(.12,.025,4.2),lineMat);m.position.set(x,.025,z);scene.add(m);laneMarks.push(m)}}
+const curb=[];
+for(let z=-150;z<20;z+=8){for(let x of [-6.15,6.15]){let m=new THREE.Mesh(new THREE.BoxGeometry(.35,.18,5),mat(0xe5e8eb));m.position.set(x,.08,z);scene.add(m);curb.push(m)}}
+function makeCar(color=0x14c8ed){
+ const g=new THREE.Group(), body=new THREE.Mesh(new THREE.BoxGeometry(1.65,.55,3),mat(color));body.position.y=.68;g.add(body);
+ const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.25,.62,1.45),mat(0x142a3c));cabin.position.set(0,1.18,-.15);g.add(cabin);
+ const glass=new THREE.Mesh(new THREE.BoxGeometry(1.12,.38,.06),new THREE.MeshStandardMaterial({color:0x8bcde4,metalness:.2,roughness:.25}));glass.position.set(0,1.2,.59);g.add(glass);
+ for(const x of [-.9,.9])for(const z of [-.95,.95]){let w=new THREE.Mesh(new THREE.CylinderGeometry(.31,.31,.18,10),mat(0x111318));w.rotation.z=Math.PI/2;w.position.set(x,.38,z);g.add(w)}
+ for(const x of [-.5,.5]){let l=new THREE.Mesh(new THREE.BoxGeometry(.3,.16,.05),mat(0xfff2b0));l.position.set(x,.72,1.52);g.add(l)}
+ return g;
+}
+const player=makeCar();player.position.set(0,0,4);scene.add(player);
+const traffic=[],coinMeshes=[];
+function spawnTraffic(){let lanes=[-4,0,4],x=lanes[Math.floor(Math.random()*3)];let c=makeCar([0xff5a5f,0xffbd45,0x8a75ff,0xe8edf2][Math.floor(Math.random()*4)]);c.scale.setScalar(.9);c.position.set(x,0,-100-Math.random()*35);scene.add(c);traffic.push(c)}
+function spawnCoin(){let c=new THREE.Mesh(new THREE.TorusGeometry(.48,.13,7,14),new THREE.MeshStandardMaterial({color:0xffd43b,metalness:.6,roughness:.3}));c.position.set([-4,0,4][Math.floor(Math.random()*3)],1.1,-100-Math.random()*35);scene.add(c);coinMeshes.push(c)}
+let running=false,speed=0,score=0,coins=0,last=0,spawn=0,coinSpawn=0,hitCooldown=0;
+const keys={left:false,right:false,gas:false,brake:false};
+document.querySelectorAll('[data-key]').forEach(b=>{let k=b.dataset.key;const on=e=>{e.preventDefault();keys[k]=true;b.classList.add('down')},off=e=>{e.preventDefault();keys[k]=false;b.classList.remove('down')};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('pointerleave',off)});
+addEventListener('keydown',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=true;if(['ArrowRight','d','D'].includes(e.key))keys.right=true;if(['ArrowUp','w','W'].includes(e.key))keys.gas=true;if(['ArrowDown','s','S'].includes(e.key))keys.brake=true});
+addEventListener('keyup',e=>{if(['ArrowLeft','a','A'].includes(e.key))keys.left=false;if(['ArrowRight','d','D'].includes(e.key))keys.right=false;if(['ArrowUp','w','W'].includes(e.key))keys.gas=false;if(['ArrowDown','s','S'].includes(e.key))keys.brake=false});
+function endGame(){running=false;hud.style.display='none';overlay.style.display='flex';overlay.querySelector('.logo').innerHTML='BALAPAN<br>SELESAI';overlay.querySelector('.sub').innerHTML=`Skor: <b>${Math.floor(score)}</b><br>Koin terkumpul: <b>${coins}</b>`;document.querySelector('#start').textContent='BALAP LAGI';}
+function start(){traffic.forEach(o=>scene.remove(o));coinMeshes.forEach(o=>scene.remove(o));traffic.length=0;coinMeshes.length=0;player.position.x=0;speed=0;score=0;coins=0;spawn=0;coinSpawn=0;running=true;overlay.style.display='none';hud.style.display='block';last=performance.now()}
+document.querySelector('#start').addEventListener('click',start);
+function animate(t){requestAnimationFrame(animate);let dt=Math.min((t-last)/1000||0,.04);last=t;
+ if(running){
+  let target=keys.gas?34:18;if(keys.brake)target=7;speed+=(target-speed)*dt*1.7;
+  if(keys.left)player.position.x-=7*dt;if(keys.right)player.position.x+=7*dt;player.position.x=Math.max(-4.65,Math.min(4.65,player.position.x));
+  const move=(speed/3.6)*dt*2.4;
+  laneMarks.concat(curb).forEach(o=>{o.position.z+=move;if(o.position.z>12)o.position.z-=162});
+  traffic.forEach((o,i)=>{o.position.z+=move*(.78+speed/55);if(o.position.z>13){scene.remove(o);traffic.splice(i,1);score+=10}});
+  coinMeshes.forEach((o,i)=>{o.position.z+=move;o.rotation.y+=dt*3;if(Math.abs(o.position.z-player.position.z)<1.6&&Math.abs(o.position.x-player.position.x)<1.5){scene.remove(o);coinMeshes.splice(i,1);coins++;score+=50}});
+  spawn+=dt;coinSpawn+=dt;if(spawn>1.8&&traffic.length<5){spawnTraffic();spawn=0}if(coinSpawn>3.2&&coinMeshes.length<3){spawnCoin();coinSpawn=0}
+  hitCooldown=Math.max(0,hitCooldown-dt);
+  for(const o of traffic){if(Math.abs(o.position.z-player.position.z)<2.35&&Math.abs(o.position.x-player.position.x)<1.45&&hitCooldown===0){speed*=.35;hitCooldown=1.1;document.querySelector('#toast').style.display='block';setTimeout(()=>document.querySelector('#toast').style.display='none',550);if(speed<5){endGame();break}}}
+  score+=dt*speed*.7;document.querySelector('#speed').textContent=Math.round(speed*3);document.querySelector('#score').textContent='SKOR '+Math.floor(score);document.querySelector('#coins').textContent='KOIN '+coins;
+ }
+ renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
+})();
+</script>
+</body></html>
